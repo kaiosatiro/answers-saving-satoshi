@@ -14,32 +14,21 @@ class Output:
     def from_options(cls, addr: str, value: int):
         assert isinstance(value, int)
         self = cls()
-        # YOUR CODE HERE
-        tp = bech32.bech32_decode(addr)
-        self.witness_version = tp[0]
-        self.witness_data = tp[1]
         self.value = value
+        dec = bech32.decode(addr[:2], addr)
+        self.witness_version = dec[0]
+        self.witness_data = bytes(dec[1])
         return self
 
     def serialize(self):
-        # YOUR CODE HERE
-        value = int.to_bytes(self.value, 8)
-        version = bytes(self.witness_version, 'ascii')
-        length = len(self.witness_data)
-        # length = len(self.witness_data).to_bytes(1)
-        index = bytearray(self.witness_data)
-        total_length = len(self.witness_version) + length + len(self.witness_data)
-        # total_length = len(version + length + index)
-        # total_length = len(version + length + index).to_bytes(1)
+        wp = b""
+        wp += pack("<B", self.witness_version)
+        wp += pack("<B", len(self.witness_data))
+        wp += self.witness_data
 
-        byte_array = pack(
-            f'2iBsB{length}s', 
-            self.value,
-            total_length, 
-            self.witness_version,
-            length,
-            self.witness_data.encode() if isinstance(self.witness_data, str) else self.witness_data
-            )
-        # byte_array = pack(value + total_length + version + length + index)
+        r = b""
+        r += pack("<Q", self.value)
+        r += pack("<B", len(wp))
+        r += wp
 
-        return byte_array
+        return r
