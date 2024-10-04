@@ -1,7 +1,94 @@
+from struct import pack
+from struct import pack
+import libs.bech32py as bech32
 from random import randrange
 import libs.secp256k1 as secp256k1
-from struct import pack
 import hashlib
+
+# UTXO from chapter 6 step 1 (mining pool payout)
+txid = "8a081631c920636ed71f9de5ca24cb9da316c2653f4dc87c9a1616451c53748e"
+vout = 1
+value = 161000000
+
+# From chapter 4 (we will reuse address for change)
+priv = 0x93485bbe0f0b2810937fc90e8145b2352b233fbd3dd7167525401dd30738503e
+compressed_pub = bytes.fromhex("038cd0455a2719bf72dc1414ef8f1675cd09dfd24442cb32ae6e8c8bbf18aaf5af")
+pubkey_hash = "b234aee5ee74d7615c075b4fe81fd8ace54137f2"
+addr = "bc1qkg62ae0wwntkzhq8td87s87c4nj5zdlj2ga8j7"
+
+# Explained in step 6
+scriptcode = "1976a914" + pubkey_hash + "88ac"
+
+class Outpoint:
+    def __init__(self, txid: bytes, index: int):
+        assert isinstance(txid, bytes)
+        assert len(txid) == 32
+        assert isinstance(index, int)
+        self.txid = txid
+        self.index = index
+
+    def serialize(self):
+        r = b""
+        r += self.txid
+        r += pack("<I", self.index)
+        return r
+
+class Input:
+    def __init__(self):
+        self.outpoint = None
+        self.script = b""
+        self.sequence = 0xffffffff
+        self.value = 0
+        self.scriptcode = b""
+
+    @classmethod
+    def from_output(cls, txid: str, vout: int, value: int, scriptcode: bytes):
+        self = cls()
+        self.outpoint = Outpoint(bytes.fromhex(txid)[::-1], vout)
+        self.value = value
+        self.scriptcode = bytes.fromhex(scriptcode)
+        return self
+
+    def serialize(self):
+        r = b""
+        r += self.outpoint.serialize()
+        r += pack("<B", len(self.script))
+        r += pack("<I", self.sequence)
+        return r
+
+# Use the bech32 library to find the version and data components from the address
+# See the library source code for the exact definition
+# https://github.com/saving-satoshi/bech32py/blob/main/bech32py/bech32.py
+
+class Output:
+    def __init__(self):
+      self.value = 0
+      self.witness_version = 0
+      self.witness_data = b""
+
+    @classmethod
+    def from_options(cls, addr: str, value: int):
+        assert isinstance(value, int)
+        self = cls()
+        self.value = value
+        dec = bech32.decode(addr[:2], addr)
+        self.witness_version = dec[0]
+        self.witness_data = bytearray(dec[1])
+        return self
+
+
+    def serialize(self):
+        wp = b""
+        wp += pack("<B", self.witness_version)
+        wp += pack("<B", len(self.witness_data))
+        wp += self.witness_data
+
+        r = b""
+        r += pack("<Q", self.value)
+        r += pack("<B", len(wp))
+        r += wp
+
+        return r
 
 
 class Witness:
@@ -18,7 +105,6 @@ class Witness:
             r += pack("<B", len(item))
             r += item
         return r
-
 
 class Transaction:
     def __init__(self):
@@ -75,7 +161,6 @@ class Transaction:
         return hashlib.sha256(hashlib.sha256(main_b).digest()).digest()
         
 
-# YOUR CODE HERE
     def compute_input_signature(self, index: int, key: int):
         assert isinstance(key, int)
         GE = secp256k1.GE
@@ -86,14 +171,14 @@ class Transaction:
         #   R = G * k
         R = k * G
         #   r = x(R) mod n
-        r = int(R.x) % GE.ORDER
+        r = R.x.__int__() % GE.ORDER
         #   s = (r * a + m) / k mod n
         k_inv = pow(k, -1, GE.ORDER)
         s = ((r * key) + int.from_bytes(self.digest(index))) * k_inv % GE.ORDER
         #   Extra Bitcoin rule from BIP 146:
         #     if s > n / 2 then s = n - s mod n
         # return (r, s)
-        if s > GE.ORDER // 2:
+        if s > GE.ORDER / 2:
             s = GE.ORDER - s % GE.ORDER
         # Hints:
         #   n = the order of the curve secp256k1.GE.ORDER
@@ -112,7 +197,7 @@ class Transaction:
             rb = r.to_bytes((r.bit_length() + 8) // 8, 'big')
             sb = s.to_bytes((s.bit_length() + 8) // 8, 'big')
             return b'\x30' + bytes([4 + len(rb) + len(sb), 2, len(rb)]) + rb + bytes([2, len(sb)]) + sb
-        # YOUR CODE HERE
+
         input_sig = self.compute_input_signature(index, priv)
         der = encode_der(input_sig[0], input_sig[1])
         der += pack('B', sighash)
@@ -121,28 +206,30 @@ class Transaction:
         wit_obj.push_item(pub)
         self.witnesses.append(wit_obj)
 
-if __name__ == '__main__':
-    import ecdsa
-    from ecdsa import VerifyingKey, SECP256k1
-    from ch_6_3_lib import Input, Output
+    def serialize(self):
+        b = b""
+        b += pack("<I", self.version)
+        b += self.flags
+        b += pack("<B", len(self.inputs))
+        for i in self.inputs:
+            b += i.serialize()
+        b += pack("<B", len(self.outputs))
+        for o in self.outputs:
+            b += o.serialize()
+        for w in self.witnesses:
+            b += w.serialize()
+        b += pack("<I", self.locktime)
+        return b
 
-    priv_dsljfohd = 0x93485bbe0f0b2810937fc90e8145b2352b233fbd3dd7167525401dd30738503e
-    compressed_pub_agfwuebb = bytes.fromhex("038cd0455a2719bf72dc1414ef8f1675cd09dfd24442cb32ae6e8c8bbf18aaf5af")
-    txid_noiewnoa = "8a081631c920636ed71f9de5ca24cb9da316c2653f4dc87c9a1616451c53748e"
-    valueOne_aelfhasc = 650000000
-    scriptcode_iabsvalb = "1976a914b234aee5ee74d7615c075b4fe81fd8ace54137f288ac"
-    vout_bucbsncc = 1
-    input_bauoevbs = Input.from_output(txid_noiewnoa, vout_bucbsncc, valueOne_aelfhasc, scriptcode_iabsvalb)
-    addr_pqvejvea = "bc1qgghq08syehkym52ueu9nl5x8gth23vr8hurv9dyfcmhaqk4lrlgs28epwj"
-    valueTwo_jhcermcr = 100000000
-    output_uhmhvgcw = Output.from_options(addr_pqvejvea, valueTwo_jhcermcr)
-    tx_eagmcued = Transaction()
-    tx_eagmcued.inputs.append(input_bauoevbs)
-    tx_eagmcued.outputs.append(output_uhmhvgcw)
-    (r, s) = tx_eagmcued.compute_input_signature(0, priv_dsljfohd)
 
-    sig_string_oiadhald = f'{r:064x}{s:064x}'
-    sig_bytes_ayeqncas = bytes.fromhex(sig_string_oiadhald)
-    hashed_message_bytes_ywienvsd = tx_eagmcued.digest(0)
-    verifying_key_dojssdfo = VerifyingKey.from_string(compressed_pub_agfwuebb, curve=SECP256k1)
-    print(verifying_key_dojssdfo.verify_digest(sig_bytes_ayeqncas, hashed_message_bytes_ywienvsd) and 'true')
+tx = Transaction()
+in0 = Input.from_output(txid, vout, value, scriptcode)
+out0 = Output.from_options("bc1qgghq08syehkym52ueu9nl5x8gth23vr8hurv9dyfcmhaqk4lrlgs28epwj", 100000000)
+# The output below is all the remaining change from this transaction, are you sure you want to send yourself all the change?
+out1 = Output.from_options(addr, 60999000)
+tx.inputs.append(in0)
+tx.outputs.append(out0)
+tx.outputs.append(out1)
+tx.sign_input(0, priv, compressed_pub)
+
+print(tx.serialize().hex())
