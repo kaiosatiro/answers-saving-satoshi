@@ -20,6 +20,7 @@ class Input:
         self.sequence = 0xffffffff
         self.value = 0
         self.scriptcode = b""
+        
     @classmethod
     def from_output(cls, txid: str, vout: int, value: int, scriptcode: bytes):
         self = cls()
@@ -27,6 +28,7 @@ class Input:
         self.value = value
         self.scriptcode = bytes.fromhex(scriptcode)
         return self
+    
     def serialize(self):
         r = b""
         r += self.outpoint.serialize()
