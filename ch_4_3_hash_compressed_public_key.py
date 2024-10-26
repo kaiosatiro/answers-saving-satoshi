@@ -1,6 +1,6 @@
 import hashlib
 
-compressed_public_key = '0338a7fe5735b82adf8134b7354175a94cc596de7468e86e51db16ee0810eca456'
+compressed_public_key = '035a8af0297898ead26badeb4ca31235b7b7c3a40d42b6934184bf25914de9a9eb'
 
 # Get the sha256 digest of the compressed public key.
 # Then get the ripemd160 digest of that sha256 hash
