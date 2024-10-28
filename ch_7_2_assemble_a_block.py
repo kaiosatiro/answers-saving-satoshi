@@ -40,9 +40,3 @@ def run():
     mempool = import_mempool_from_json_file("mempool.json")
     block = assemble_block(mempool)
     return block
-
-b = run()
-
-print(
-    b
-)
